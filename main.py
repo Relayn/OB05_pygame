@@ -19,15 +19,17 @@ BULLET_COLOR = (255, 0, 0)  # Красный цвет пуль
 # Частота обновления
 clock = pygame.time.Clock()
 
+# Звуки
+shoot_sound = pygame.mixer.Sound("shoot.wav")
+hit_sound = pygame.mixer.Sound("hit.wav")
 
 class Player:
     """Класс для управления игроком."""
-
     def __init__(self, x: int, y: int) -> None:
         self.x = x
         self.y = y
         self.size = 25  # Размер квадрата игрока
-        self.speed = 7
+        self.speed = 9
 
     def move(self, keys: pygame.key.ScancodeWrapper) -> None:
         if keys[pygame.K_w] or keys[pygame.K_UP]:
@@ -46,12 +48,7 @@ class Player:
         pygame.draw.rect(surface, PLAYER_COLOR, (self.x, self.y, self.size, self.size))
 
     def shoot(self) -> pygame.Rect:
-        """
-        Создает пулю, вылетающую из центра игрока.
-
-        Returns:
-            pygame.Rect: Прямоугольник, представляющий пулю.
-        """
+        """Создает пулю, вылетающую из центра игрока."""
         bullet_x = self.x + self.size // 2 - 5  # Центр игрока
         bullet_y = self.y  # Пуля вылетает сверху
         return pygame.Rect(bullet_x, bullet_y, 10, 20)  # Размер пули
@@ -59,7 +56,6 @@ class Player:
 
 class Bullet:
     """Класс для управления пулями."""
-
     def __init__(self, rect: pygame.Rect) -> None:
         self.rect = rect
         self.speed = 10  # Скорость пули
@@ -75,7 +71,6 @@ class Bullet:
 
 class Enemy:
     """Класс для управления врагами."""
-
     def __init__(self, x: int, y: int) -> None:
         self.rect = pygame.Rect(x, y, 30, 30)  # Размер врага
         self.speed = random.randint(2, 5)  # Случайная скорость врага
@@ -89,78 +84,103 @@ class Enemy:
         pygame.draw.rect(surface, (255, 255, 0), self.rect)  # Желтый цвет врага
 
 
+def display_score(surface: pygame.Surface, score: int) -> None:
+    """Отображает текущий счет на экране."""
+    font = pygame.font.Font(None, 36)
+    score_text = font.render(f"Score: {score}", True, WHITE)
+    surface.blit(score_text, (10, 10))
+
+
+def game_over_screen() -> str:
+    """Отображает экран Game Over и обрабатывает выбор игрока."""
+    font = pygame.font.Font(None, 74)
+    small_font = pygame.font.Font(None, 36)
+
+    while True:
+        screen.fill(BLACK)
+        text = font.render("Game Over", True, WHITE)
+        restart_text = small_font.render("Press R to Restart", True, WHITE)
+        quit_text = small_font.render("Press Q to Quit", True, WHITE)
+
+        screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, 200))
+        screen.blit(restart_text, (WINDOW_WIDTH // 2 - restart_text.get_width() // 2, 300))
+        screen.blit(quit_text, (WINDOW_WIDTH // 2 - quit_text.get_width() // 2, 350))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    return "restart"
+                if event.key == pygame.K_q:
+                    pygame.quit()
+                    sys.exit()
+
+
 def main():
     """Главная функция игры."""
-    # Создаем игрока
     player = Player(WINDOW_WIDTH // 2, WINDOW_HEIGHT - 50)
-    bullets = []  # Список для хранения пуль
-    enemies = []  # Список для хранения врагов
-    enemy_spawn_timer = 0  # Таймер для появления врагов
-    score = 0  # Переменная для подсчета очков
-
-    # Настройки шрифта для отображения счета
-    font = pygame.font.SysFont(None, 36)
+    bullets = []
+    enemies = []
+    enemy_spawn_timer = 0
+    score = 0  # Счет игры
 
     running = True
     while running:
-        # Обработка событий
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:  # Стрельба при нажатии пробела
+                if event.key == pygame.K_SPACE:  # Стрельба
                     bullets.append(Bullet(player.shoot()))
+                    shoot_sound.play()
 
-        # Получаем состояние клавиш
         keys = pygame.key.get_pressed()
-
-        # Обновление логики
         player.move(keys)
 
-        # Обновляем таймер появления врагов
+        # Таймер врагов
         enemy_spawn_timer += 1
-        if enemy_spawn_timer >= 60:  # Каждые 60 кадров появляется враг
-            x_position = random.randint(0, WINDOW_WIDTH - 30)  # Случайная позиция
-            enemies.append(Enemy(x_position, 0))
+        if enemy_spawn_timer >= 60:
+            enemies.append(Enemy(random.randint(0, WINDOW_WIDTH - 30), 0))
             enemy_spawn_timer = 0
 
         # Обновление врагов
         for enemy in enemies[:]:
             enemy.update()
-            if enemy.rect.top > WINDOW_HEIGHT:  # Удаляем врагов, если они выходят за экран
+            if enemy.rect.top > WINDOW_HEIGHT:
                 enemies.remove(enemy)
-            if enemy.rect.colliderect(player.x, player.y, player.size, player.size):
-                running = False  # Завершаем игру, если враг касается игрока
+            if enemy.rect.colliderect(pygame.Rect(player.x, player.y, player.size, player.size)):
+                if game_over_screen() == "restart":
+                    main()
+                else:
+                    running = False
 
         # Обновление пуль
         for bullet in bullets[:]:
             bullet.update()
-            if bullet.rect.bottom < 0:  # Удаляем пулю, если она вышла за верх экрана
+            if bullet.rect.bottom < 0:
                 bullets.remove(bullet)
 
-            # Проверяем столкновения пуль с врагами
             for enemy in enemies[:]:
-                if bullet.rect.colliderect(enemy.rect):  # Столкновение
-                    enemies.remove(enemy)  # Удаляем врага
-                    bullets.remove(bullet)  # Удаляем пулю
-                    score += 1  # Увеличиваем счет
+                if bullet.rect.colliderect(enemy.rect):
+                    enemies.remove(enemy)
+                    bullets.remove(bullet)
+                    hit_sound.play()
+                    score += 1  # Увеличение счета
                     break
 
         # Отрисовка
-        screen.fill(BLACK)  # Очищаем экран
-        player.draw(screen)  # Рисуем игрока
-        for bullet in bullets:  # Рисуем все активные пули
+        screen.fill(BLACK)
+        player.draw(screen)
+        for bullet in bullets:
             bullet.draw(screen)
-        for enemy in enemies:  # Рисуем всех врагов
+        for enemy in enemies:
             enemy.draw(screen)
-
-        # Отображение счета
-        score_text = font.render(f"Score: {score}", True, WHITE)
-        screen.blit(score_text, (10, 10))
-
-        pygame.display.flip()  # Обновляем экран
-
-        # Ограничение FPS
+        display_score(screen, score)  # Отображение счета
+        pygame.display.flip()
         clock.tick(60)
 
     pygame.quit()
